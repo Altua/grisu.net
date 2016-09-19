@@ -33,10 +33,531 @@ using System.IO;
 
 namespace GrisuDotNet
 {
-    public static class Grisu
+    /// <summary>
+    /// The supported modes for double to ascii conversion.
+    /// </summary>
+    public enum DtoaMode
+    {
+        /// <summary>
+        /// Produce the shortest correct representation.
+        /// For example the output of 0.299999999999999988897 is (the less accurate
+        /// but correct) 0.3.
+        /// </summary>
+        SHORTEST,
+        /// <summary>
+        /// Same as SHORTEST, but for single-precision floats.
+        /// </summary>
+        SHORTEST_SINGLE,
+        /// <summary>
+        /// Produce a fixed number of digits after the decimal point.
+        /// For instance fixed(0.1, 4) becomes 0.1000
+        /// If the input number is big, the output will be big.
+        /// </summary>
+        FIXED,
+        /// <summary>
+        /// Fixed number of digits (independent of the decimal point).
+        /// </summary>
+        PRECISION
+    };
+
+    public enum FastDtoaMode
+    {
+        /// <summary>
+        /// Computes the shortest representation of the given input. The returned
+        /// result will be the most accurate number of this length. Longer
+        /// representations might be more accurate.
+        /// </summary>
+        SHORTEST,
+        /// <summary>
+        /// Same as FAST_DTOA_SHORTEST but for single-precision floats.
+        /// </summary>
+        SHORTEST_SINGLE,
+        /// <summary>
+        /// Computes a representation where the precision (number of digits) is
+        /// given as input. The precision is independent of the decimal point.
+        /// </summary>
+        PRECISION
+    };
+
+public static class Grisu
     {
         [ThreadStatic]
         private static char[] ts_decimal_rep;
+
+        private const int kDoubleSignificandSize = 53;  // Includes the hidden bit.
+
+        public static void DoubleToAsciiShortest(double value, out char[] buffer, out bool sign, out int length, out int point)
+        {
+            buffer = new char[kBase10MaximalLength + 1];
+            DoubleToAscii(value, DtoaMode.SHORTEST, 0, ref buffer, out sign, out length, out point);
+        }
+
+        /// <summary>
+        /// Converts the given double 'v' to ascii. 'v' must not be NaN, +Infinity, or
+        /// -Infinity. 
+        ///
+        ///  The result should be interpreted as buffer * 10^(point-length).
+        ///
+        /// The output depends on the given mode:
+        ///  - SHORTEST: produce the least amount of digits for which the internal
+        ///   identity requirement is still satisfied. If the digits are printed
+        ///   (together with the correct exponent) then reading this number will give
+        ///   'v' again. The buffer will choose the representation that is closest to
+        ///   'v'. If there are two at the same distance, than the one farther away
+        ///   from 0 is chosen (halfway cases - ending with 5 - are rounded up).
+        ///   In this mode the 'requested_digits' parameter is ignored.
+        ///  - SHORTEST_SINGLE: same as SHORTEST but with single-precision.
+        ///  - FIXED: produces digits necessary to print a given number with
+        ///   'requested_digits' digits after the decimal point. The produced digits
+        ///   might be too short in which case the caller has to fill the remainder
+        ///   with '0's.
+        ///   Example: toFixed(0.001, 5) is allowed to return buffer="1", point=-2.
+        ///   Halfway cases are rounded towards +/-Infinity (away from 0). The call
+        ///   toFixed(0.15, 2) thus returns buffer="2", point=0.
+        ///   The returned buffer may contain digits that would be truncated from the
+        ///   shortest representation of the input.
+        ///  - PRECISION: produces 'requested_digits' where the first digit is not '0'.
+        ///   Even though the length of produced digits usually equals
+        ///   'requested_digits', the function is allowed to return fewer digits, in
+        ///   which case the caller has to fill the missing digits with '0's.
+        ///   Halfway cases are again rounded away from 0.
+        /// DoubleToAscii expects the given buffer to be big enough to hold all
+        /// digits and a terminating null-character. In SHORTEST-mode it expects a
+        /// buffer of at least kBase10MaximalLength + 1. In all other modes the
+        /// requested_digits parameter and the padding-zeroes limit the size of the
+        /// output. Don't forget the decimal point, the exponent character and the
+        /// terminating null-character when computing the maximal output size.
+        /// The given length is only used in debug mode to ensure the buffer is big
+        /// enough.
+        /// </summary>
+        public static void DoubleToAscii(
+                                        double value, 
+                                        DtoaMode mode,
+                                        int requested_digits,
+                                        ref char[] buffer,
+                                        out bool sign,
+                                        out int length,
+                                        out int point)
+        {
+            Debug.Assert(!(double.IsNaN(value) || double.IsInfinity(value)));
+            Debug.Assert(mode == DtoaMode.SHORTEST || mode == DtoaMode.SHORTEST_SINGLE || requested_digits >= 0);
+
+            if (value < 0)
+            {
+                sign = true;
+                value = -value;
+            }
+            else
+            {
+                sign = false;
+            }
+
+            if (mode == DtoaMode.PRECISION && requested_digits == 0)
+            {
+                buffer[0] = '\0';
+                length = 0;
+                point = 0;
+                return;
+            }
+
+            // ReSharper disable once CompareOfFloatsByEqualityOperator
+            if (value == 0)
+            {
+                buffer[0] = '0';
+                buffer[1] = '\0';
+                length = 1;
+                point = 1;
+                return;
+            }
+
+            bool fastWorked;
+            GrisuDouble gv = new GrisuDouble(value);
+            switch (mode)
+            {
+                case DtoaMode.SHORTEST:
+                    fastWorked = FastDtoa(gv, FastDtoaMode.SHORTEST, 0, buffer, out length, out point);
+                    break;
+                case DtoaMode.SHORTEST_SINGLE:
+                    fastWorked = FastDtoa(gv, FastDtoaMode.SHORTEST_SINGLE, 0,
+                                           buffer, out length, out point);
+                    break;
+                case DtoaMode.FIXED:
+                    fastWorked = FastFixedDtoa(gv, requested_digits, buffer, out length, out point);
+                    break;
+                case DtoaMode.PRECISION:
+                    fastWorked = FastDtoa(gv, FastDtoaMode.PRECISION, requested_digits, buffer, out length, out point);
+                    break;
+                default:
+                    throw new InvalidOperationException($"The mode '{mode}' is not supported in {nameof(DoubleToAscii)}.");
+            }
+            if (fastWorked) return;
+
+            // If the fast dtoa didn't succeed use the slower bignum version.
+            // TODO UNDONE
+            //BignumDtoaMode bignum_mode = DtoaToBignumDtoaMode(mode);
+            //BignumDtoa(value, bignum_mode, requested_digits, buffer, length, point);
+            buffer[length] = '\0';
+        }
+
+        private static bool FastFixedDtoa(GrisuDouble v,
+                   int fractional_count,
+                   char[] buffer,
+                   out int length,
+                   out int decimal_point)
+        {
+            const uint kMaxUInt32 = 0xFFFFFFFF;
+            ulong significand = v.Significand;
+            int exponent = v.Exponent;
+            // v = significand * 2^exponent (with significand a 53bit integer).
+            // If the exponent is larger than 20 (i.e. we may have a 73bit number) then we
+            // don't know how to compute the representation. 2^73 ~= 9.5*10^21.
+            // If necessary this limit could probably be increased, but we don't need
+            // more.
+            length = 0;
+            decimal_point = 0;
+            if (exponent > 20) return false;
+            if (fractional_count > 20) return false;
+            // At most kDoubleSignificandSize bits of the significand are non-zero.
+            // Given a 64 bit integer we have 11 0s followed by 53 potentially non-zero
+            // bits:  0..11*..0xxx..53*..xx
+            if (exponent + kDoubleSignificandSize > 64)
+            {
+                // The exponent must be > 11.
+                //
+                // We know that v = significand * 2^exponent.
+                // And the exponent > 11.
+                // We simplify the task by dividing v by 10^17.
+                // The quotient delivers the first digits, and the remainder fits into a 64
+                // bit number.
+                // Dividing by 10^17 is equivalent to dividing by 5^17*2^17.
+                const ulong kFive17 = 0xB1A2BC2EC5;  // 5^17
+                ulong divisor = kFive17;
+                int divisor_power = 17;
+                ulong dividend = significand;
+                uint quotient;
+                ulong remainder;
+                // Let v = f * 2^e with f == significand and e == exponent.
+                // Then need q (quotient) and r (remainder) as follows:
+                //   v            = q * 10^17       + r
+                //   f * 2^e      = q * 10^17       + r
+                //   f * 2^e      = q * 5^17 * 2^17 + r
+                // If e > 17 then
+                //   f * 2^(e-17) = q * 5^17        + r/2^17
+                // else
+                //   f  = q * 5^17 * 2^(17-e) + r/2^e
+                if (exponent > divisor_power)
+                {
+                    // We only allow exponents of up to 20 and therefore (17 - e) <= 3
+                    dividend <<= exponent - divisor_power;
+                    quotient = (uint)(dividend / divisor);
+                    remainder = (dividend % divisor) << divisor_power;
+                }
+                else
+                {
+                    divisor <<= divisor_power - exponent;
+                    quotient = (uint)(dividend / divisor);
+                    remainder = (dividend % divisor) << exponent;
+                }
+                FillDigits32(quotient, buffer, ref length);
+                FillDigits64FixedLength(remainder, buffer, ref length);
+                decimal_point = length;
+            }
+            else if (exponent >= 0)
+            {
+                // 0 <= exponent <= 11
+                significand <<= exponent;
+                FillDigits64(significand, buffer, ref length);
+                decimal_point = length;
+            }
+            else if (exponent > -kDoubleSignificandSize)
+            {
+                // We have to cut the number.
+                ulong integrals = significand >> -exponent;
+                ulong fractionals = significand - (integrals << -exponent);
+                if (integrals > kMaxUInt32)
+                {
+                    FillDigits64(integrals, buffer, ref length);
+                }
+                else
+                {
+                    FillDigits32((uint)(integrals), buffer, ref length);
+                }
+                decimal_point = length;
+                FillFractionals(fractionals, exponent, fractional_count,
+                                buffer, ref length, ref decimal_point);
+            }
+            else if (exponent < -128)
+            {
+                // This configuration (with at most 20 digits) means that all digits must be
+                // 0.
+                Debug.Assert(fractional_count <= 20);
+                buffer[0] = '\0';
+                length = 0;
+                decimal_point = -fractional_count;
+            }
+            else
+            {
+                decimal_point = 0;
+                FillFractionals(significand, exponent, fractional_count,
+                                buffer, ref length, ref decimal_point);
+            }
+            TrimZeros(buffer, ref length, ref decimal_point);
+            buffer[length] = '\0';
+            if (length == 0)
+            {
+                // The string is empty and the decimal_point thus has no importance. Mimick
+                // Gay's dtoa and and set it to -fractional_count.
+                decimal_point = -fractional_count;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Removes leading and trailing zeros.
+        /// If leading zeros are removed then the decimal point position is adjusted.
+        /// </summary>
+        private static void TrimZeros(char[] buffer, ref int length, ref int decimal_point)
+        {
+            while (length > 0 && buffer[length - 1] == '0')
+            {
+                length--;
+            }
+            int first_non_zero = 0;
+            while (first_non_zero < length && buffer[first_non_zero] == '0')
+            {
+                first_non_zero++;
+            }
+            if (first_non_zero != 0)
+            {
+                for (int i = first_non_zero; i < length; ++i)
+                {
+                    buffer[i - first_non_zero] = buffer[i];
+                }
+                length -= first_non_zero;
+                decimal_point -= first_non_zero;
+            }
+        }
+
+
+        // The given fractionals number represents a fixed-point number with binary
+        // point at bit (-exponent).
+        // Preconditions:
+        //   -128 <= exponent <= 0.
+        //   0 <= fractionals * 2^exponent < 1
+        //   The buffer holds the result.
+        // The function will round its result. During the rounding-process digits not
+        // generated by this function might be updated, and the decimal-point variable
+        // might be updated. If this function generates the digits 99 and the buffer
+        // already contained "199" (thus yielding a buffer of "19999") then a
+        // rounding-up will change the contents of the buffer to "20000".
+        private static void FillFractionals(ulong fractionals, int exponent,
+                                    int fractional_count, char[] buffer,
+                                    ref int length,  ref int decimal_point)
+        {
+            Debug.Assert(-128 <= exponent && exponent <= 0);
+            // 'fractionals' is a fixed-point number, with binary point at bit
+            // (-exponent). Inside the function the non-converted remainder of fractionals
+            // is a fixed-point number, with binary point at bit 'point'.
+            if (-exponent <= 64)
+            {
+                // One 64 bit number is sufficient.
+                Debug.Assert(fractionals >> 56 == 0);
+                int point = -exponent;
+                for (int i = 0; i < fractional_count; ++i)
+                {
+                    if (fractionals == 0) break;
+                    // Instead of multiplying by 10 we multiply by 5 and adjust the point
+                    // location. This way the fractionals variable will not overflow.
+                    // Invariant at the beginning of the loop: fractionals < 2^point.
+                    // Initially we have: point <= 64 and fractionals < 2^56
+                    // After each iteration the point is decremented by one.
+                    // Note that 5^3 = 125 < 128 = 2^7.
+                    // Therefore three iterations of this loop will not overflow fractionals
+                    // (even without the subtraction at the end of the loop body). At this
+                    // time point will satisfy point <= 61 and therefore fractionals < 2^point
+                    // and any further multiplication of fractionals by 5 will not overflow.
+                    fractionals *= 5;
+                    point--;
+                    int digit = (int)(fractionals >> point);
+                    Debug.Assert(digit <= 9);
+                    buffer[length] =(char)('0' + digit);
+                    length++;
+                    fractionals -= (ulong)(digit) << point;
+                }
+                // If the first bit after the point is set we have to round up.
+                if (((fractionals >> (point - 1)) & 1) == 1)
+                {
+                    RoundUp(buffer, ref length, ref decimal_point);
+                }
+            }
+            else
+            {  // We need 128 bits.
+                Debug.Assert(64 < -exponent && -exponent <= 128);
+                UInt128 fractionals128 = new UInt128(fractionals, 0);
+                fractionals128.Shift(-exponent - 64);
+                int point = 128;
+                for (int i = 0; i < fractional_count; ++i)
+                {
+                    if (fractionals128.IsZero()) break;
+                    // As before: instead of multiplying by 10 we multiply by 5 and adjust the
+                    // point location.
+                    // This multiplication will not overflow for the same reasons as before.
+                    fractionals128.Multiply(5);
+                    point--;
+                    int digit = fractionals128.DivModPowerOf2(point);
+                    Debug.Assert(digit <= 9);
+                    buffer[length] = (char)('0' + digit);
+                    length++;
+                }
+                if (fractionals128.BitAt(point - 1) == 1)
+                {
+                    RoundUp(buffer, ref length, ref decimal_point);
+                }
+            }
+        }
+
+        private static void RoundUp(char[] buffer, ref int length, ref int decimal_point)
+        {
+            // An empty buffer represents 0.
+            if (length == 0)
+            {
+                buffer[0] = '1';
+                decimal_point = 1;
+                length = 1;
+                return;
+            }
+            // Round the last digit until we either have a digit that was not '9' or until
+            // we reached the first digit.
+            buffer[length - 1]++;
+            for (int i = length - 1; i > 0; --i)
+            {
+                if (buffer[i] != '0' + 10)
+                {
+                    return;
+                }
+                buffer[i] = '0';
+                buffer[i - 1]++;
+            }
+            // If the first digit is now '0' + 10, we would need to set it to '0' and add
+            // a '1' in front. However we reach the first digit only if all following
+            // digits had been '9' before rounding up. Now all trailing digits are '0' and
+            // we simply switch the first digit to '1' and update the decimal-point
+            // (indicating that the point is now one digit to the right).
+            if (buffer[0] == '0' + 10)
+            {
+                buffer[0] = '1';
+                decimal_point++;
+            }
+        }
+
+        private static void FillDigits32(uint number, char[] buffer, ref int length)
+        {
+            int number_length = 0;
+            // We fill the digits in reverse order and exchange them afterwards.
+            while (number != 0)
+            {
+                uint digit = number % 10;
+                number /= 10;
+                buffer[length + number_length] = (char)('0' + digit);
+                number_length++;
+            }
+            // Exchange the digits.
+            int i = length;
+            int j = length + number_length - 1;
+            while (i < j)
+            {
+                char tmp = buffer[i];
+                buffer[i] = buffer[j];
+                buffer[j] = tmp;
+                i++;
+                j--;
+            }
+            length += number_length;
+        }
+
+        static void FillDigits64(ulong number, char[] buffer, ref int length)
+        {
+            const uint kTen7 = 10000000;
+            // For efficiency cut the number into 3 uint32_t parts, and print those.
+            uint part2 = (uint)(number % kTen7);
+            number /= kTen7;
+            uint part1 = (uint)(number % kTen7);
+            uint part0 = (uint)(number / kTen7);
+
+            if (part0 != 0)
+            {
+                FillDigits32(part0, buffer, ref length);
+                FillDigits32FixedLength(part1, 7, buffer, ref length);
+                FillDigits32FixedLength(part2, 7, buffer, ref length);
+            }
+            else if (part1 != 0)
+            {
+                FillDigits32(part1, buffer, ref length);
+                FillDigits32FixedLength(part2, 7, buffer, ref length);
+            }
+            else
+            {
+                FillDigits32(part2, buffer, ref length);
+            }
+        }
+
+        static void FillDigits64FixedLength(ulong number, char[] buffer, ref int length)
+        {
+            const uint kTen7 = 10000000;
+            // For efficiency cut the number into 3 uint32_t parts, and print those.
+            uint part2 = (uint)(number % kTen7);
+            number /= kTen7;
+            uint part1 = (uint)(number % kTen7);
+            uint part0 = (uint)(number / kTen7);
+
+            FillDigits32FixedLength(part0, 3, buffer, ref length);
+            FillDigits32FixedLength(part1, 7, buffer, ref length);
+            FillDigits32FixedLength(part2, 7, buffer, ref length);
+        }
+
+        static void FillDigits32FixedLength(uint number, int requested_length,
+                                    char[] buffer, ref int length)
+        {
+            for (int i = requested_length - 1; i >= 0; --i)
+            {
+                buffer[length + i] = (char)('0' + number % 10);
+                number /= 10;
+            }
+            length += requested_length;
+        }
+
+
+
+        private static bool FastDtoa(GrisuDouble v, FastDtoaMode mode, int requested_digits, char[] buffer,
+              out int length,
+              out int decimal_point)
+        {
+            Debug.Assert(v.Value > 0);
+            Debug.Assert(!v.IsSpecial);
+
+            bool result = false;
+            int decimal_exponent = 0;
+            decimal_point = 0;
+            switch (mode)
+            {
+                case FastDtoaMode.SHORTEST:
+                case FastDtoaMode.SHORTEST_SINGLE:
+                    result = Grisu3(v, mode, buffer, out length, out decimal_exponent);
+                    break;
+                case FastDtoaMode.PRECISION:
+                    result = Grisu3Counted(v, requested_digits, buffer, out length, out decimal_exponent);
+                    break;
+                default:
+                    throw new InvalidOperationException($"The mode '{mode}' is not supported in {nameof(FastDtoa)}.");
+            }
+            if (result)
+            {
+                decimal_point = length + decimal_exponent;
+                buffer[length] = '\0';
+            }
+            return result;
+        }
+
 
         public static void DoubleToString(double value, TextWriter writer)
         {
@@ -60,7 +581,7 @@ namespace GrisuDotNet
             int decimal_point;
             int decimal_rep_length;
 
-            if (!DoubleToShortestAscii(ref grisuDouble, decimal_rep, out decimal_rep_length, out decimal_point))
+            if (!DoubleToShortestAscii(grisuDouble, decimal_rep, out decimal_rep_length, out decimal_point))
             {
                 writer.Write(string.Format(CultureInfo.InvariantCulture, "{0:R}", value));
                 return;
@@ -108,7 +629,7 @@ namespace GrisuDotNet
         // kBase10MaximalLength.
         // Note that DoubleToAscii null-terminates its input. So the given buffer
         // should be at least kBase10MaximalLength + 1 characters long.
-        private const int kBase10MaximalLength = 17;
+        internal const int kBase10MaximalLength = 17;
 
         private const string infinity_symbol_ = "Infinity";
         private const string nan_symbol_ = "NaN";
@@ -134,7 +655,7 @@ namespace GrisuDotNet
             }
         }
 
-        private static bool DoubleToShortestAscii(ref GrisuDouble v, char[] buffer, out int length, out int point)
+        private static bool DoubleToShortestAscii(GrisuDouble v, char[] buffer, out int length, out int point)
         {
             Debug.Assert(!v.IsSpecial);
             Debug.Assert(v.Value >= 0.0);
@@ -151,7 +672,7 @@ namespace GrisuDotNet
             }
 
             int decimal_exponent;
-            bool result = Grisu3(ref v, buffer, out length, out decimal_exponent);
+            bool result = Grisu3(v, FastDtoaMode.SHORTEST, buffer, out length, out decimal_exponent);
             if (result)
             {
                 point = length + decimal_exponent;
@@ -183,7 +704,8 @@ namespace GrisuDotNet
         // The last digit will be closest to the actual v. That is, even if several
         // digits might correctly yield 'v' when read again, the closest will be
         // computed.
-        private static bool Grisu3(ref GrisuDouble v,
+        private static bool Grisu3(GrisuDouble v,
+                           FastDtoaMode mode,
                            char[] buffer,
                            out int length,
                            out int decimal_exponent)
@@ -194,7 +716,17 @@ namespace GrisuDotNet
             // boundary_minus and boundary_plus will round to v when convert to a double.
             // Grisu3 will never output representations that lie exactly on a boundary.
             DiyFp boundary_minus, boundary_plus;
-            v.NormalizedBoundaries(out boundary_minus, out boundary_plus);
+            if (mode == FastDtoaMode.SHORTEST)
+            {
+                v.NormalizedBoundaries(out boundary_minus, out boundary_plus);
+            }
+            else
+            {
+                Debug.Assert(mode == FastDtoaMode.SHORTEST_SINGLE);
+                throw new NotImplementedException($"The mode '{FastDtoaMode.SHORTEST_SINGLE}' is currently not implemented.");
+                //float single_v = static_cast<float>(v);
+                //Single(single_v).NormalizedBoundaries(&boundary_minus, &boundary_plus);
+            }
             Debug.Assert(boundary_plus.E == w.E);
             DiyFp ten_mk;  // Cached power of ten: 10^-k
             int mk;        // -k
@@ -242,6 +774,55 @@ namespace GrisuDotNet
             int kappa;
             bool result = DigitGen(ref boundary_minus, ref w, ref boundary_plus,
                                    buffer, out length, out kappa);
+            decimal_exponent = -mk + kappa;
+            return result;
+        }
+
+        // The "counted" version of grisu3 (see above) only generates requested_digits
+        // number of digits. This version does not generate the shortest representation,
+        // and with enough requested digits 0.1 will at some point print as 0.9999999...
+        // Grisu3 is too imprecise for real halfway cases (1.5 will not work) and
+        // therefore the rounding strategy for halfway cases is irrelevant.
+        static bool Grisu3Counted(GrisuDouble v,
+                                  int requested_digits,
+                                  char[] buffer,
+                                  out int length,
+                                  out int decimal_exponent)
+        {
+            DiyFp w = v.AsNormalizedDiyFp();
+            DiyFp ten_mk;  // Cached power of ten: 10^-k
+            int mk;        // -k
+            int ten_mk_minimal_binary_exponent =
+               kMinimalTargetExponent - (w.E + DiyFp.kSignificandSize);
+            int ten_mk_maximal_binary_exponent =
+               kMaximalTargetExponent - (w.E + DiyFp.kSignificandSize);
+            PowersOfTenCache.GetCachedPowerForBinaryExponentRange(
+                ten_mk_minimal_binary_exponent,
+                ten_mk_maximal_binary_exponent,
+                out ten_mk, out mk);
+            Debug.Assert((kMinimalTargetExponent <= w.E + ten_mk.E +
+                    DiyFp.kSignificandSize) &&
+                   (kMaximalTargetExponent >= w.E + ten_mk.E +
+                    DiyFp.kSignificandSize));
+            // Note that ten_mk is only an approximation of 10^-k. A DiyFp only contains a
+            // 64 bit significand and ten_mk is thus only precise up to 64 bits.
+
+            // The DiyFp::Times procedure rounds its result, and ten_mk is approximated
+            // too. The variable scaled_w (as well as scaled_boundary_minus/plus) are now
+            // off by a small amount.
+            // In fact: scaled_w - w*10^k < 1ulp (unit in the last place) of scaled_w.
+            // In other words: let f = scaled_w.f() and e = scaled_w.e(), then
+            //           (f-1) * 2^e < w*10^k < (f+1) * 2^e
+            w.Multiply(ref ten_mk);
+
+            // We now have (double) (scaled_w * 10^-mk).
+            // DigitGen will generate the first requested_digits digits of scaled_w and
+            // return together with a kappa such that scaled_w ~= buffer * 10^kappa. (It
+            // will not always be exactly the same since DigitGenCounted only produces a
+            // limited number of digits.)
+            int kappa;
+            bool result = DigitGenCounted(w, requested_digits,
+                                          buffer, out length, out kappa);
             decimal_exponent = -mk + kappa;
             return result;
         }
@@ -322,7 +903,7 @@ namespace GrisuDotNet
             // such that:   too_low < buffer * 10^kappa < too_high
             // We use too_high for the digit_generation and stop as soon as possible.
             // If we stop early we effectively round down.
-            DiyFp one = new DiyFp((ulong)(1) << -w.E, w.E);
+            DiyFp one = new DiyFp(1UL << -w.E, w.E);
             // Division by one is a shift.
             uint integrals = (uint)(too_high.F >> -one.E);
             // Modulo by one is an and.
@@ -390,6 +971,178 @@ namespace GrisuDotNet
                                      unsafe_interval.F, fractionals, one.F, unit);
                 }
             }
+        }
+
+        // Generates (at most) requested_digits digits of input number w.
+        // w is a floating-point number (DiyFp), consisting of a significand and an
+        // exponent. Its exponent is bounded by kMinimalTargetExponent and
+        // kMaximalTargetExponent.
+        //       Hence -60 <= w.e() <= -32.
+        //
+        // Returns false if it fails, in which case the generated digits in the buffer
+        // should not be used.
+        // Preconditions:
+        //  * w is correct up to 1 ulp (unit in the last place). That
+        //    is, its error must be strictly less than a unit of its last digit.
+        //  * kMinimalTargetExponent <= w.e() <= kMaximalTargetExponent
+        //
+        // Postconditions: returns false if procedure fails.
+        //   otherwise:
+        //     * buffer is not null-terminated, but length contains the number of
+        //       digits.
+        //     * the representation in buffer is the most precise representation of
+        //       requested_digits digits.
+        //     * buffer contains at most requested_digits digits of w. If there are less
+        //       than requested_digits digits then some trailing '0's have been removed.
+        //     * kappa is such that
+        //            w = buffer * 10^kappa + eps with |eps| < 10^kappa / 2.
+        //
+        // Remark: This procedure takes into account the imprecision of its input
+        //   numbers. If the precision is not enough to guarantee all the postconditions
+        //   then false is returned. This usually happens rarely, but the failure-rate
+        //   increases with higher requested_digits.
+        static bool DigitGenCounted(DiyFp w,
+                                    int requested_digits,
+                                    char[] buffer,
+                                    out int length,
+                                    out int kappa)
+        {
+            Debug.Assert(kMinimalTargetExponent <= w.E && w.E <= kMaximalTargetExponent);
+            Debug.Assert(kMinimalTargetExponent >= -60);
+            Debug.Assert(kMaximalTargetExponent <= -32);
+            // w is assumed to have an error less than 1 unit. Whenever w is scaled we
+            // also scale its error.
+            ulong w_error = 1;
+            // We cut the input number into two parts: the integral digits and the
+            // fractional digits. We don't emit any decimal separator, but adapt kappa
+            // instead. Example: instead of writing "1.2" we put "12" into the buffer and
+            // increase kappa by 1.
+            DiyFp one = new DiyFp(1UL << -w.E, w.E);
+            // Division by one is a shift.
+            uint integrals = (uint)(w.F >> -one.E);
+            // Modulo by one is an and.
+            ulong fractionals = w.F & (one.F - 1);
+            uint divisor;
+            int divisor_exponent_plus_one;
+            BiggestPowerTen(integrals, DiyFp.kSignificandSize - (-one.E),
+                            out divisor, out divisor_exponent_plus_one);
+            kappa = divisor_exponent_plus_one;
+            length = 0;
+
+            // Loop invariant: buffer = w / 10^kappa  (integer division)
+            // The invariant holds for the first iteration: kappa has been initialized
+            // with the divisor exponent + 1. And the divisor is the biggest power of ten
+            // that is smaller than 'integrals'.
+            while (kappa > 0)
+            {
+                int digit = (int)(integrals / divisor);
+                Debug.Assert(digit <= 9);
+                buffer[length] = (char)('0' + digit);
+                length++;
+                requested_digits--;
+                integrals %= divisor;
+                kappa--;
+                // Note that kappa now equals the exponent of the divisor and that the
+                // invariant thus holds again.
+                if (requested_digits == 0) break;
+                divisor /= 10;
+            }
+
+            if (requested_digits == 0)
+            {
+                ulong rest =
+                    ((ulong)(integrals) << -one.E) + fractionals;
+                return RoundWeedCounted(buffer, length, rest,
+                                        (ulong)(divisor) << -one.E, w_error,
+                                        ref kappa);
+            }
+
+            // The integrals have been generated. We are at the point of the decimal
+            // separator. In the following loop we simply multiply the remaining digits by
+            // 10 and divide by one. We just need to pay attention to multiply associated
+            // data (the 'unit'), too.
+            // Note that the multiplication by 10 does not overflow, because w.e >= -60
+            // and thus one.e >= -60.
+            Debug.Assert(one.E >= -60);
+            Debug.Assert(fractionals < one.F);
+            Debug.Assert(0xFFFFFFFFFFFFFFFF / 10 >= one.F);
+            while (requested_digits > 0 && fractionals > w_error)
+            {
+                fractionals *= 10;
+                w_error *= 10;
+                // Integer division by one.
+                int digit = (int)(fractionals >> -one.E);
+                Debug.Assert(digit <= 9);
+                buffer[length] = (char)('0' + digit);
+                length++;
+                requested_digits--;
+                fractionals &= one.F - 1;  // Modulo by one.
+                kappa--;
+            }
+            if (requested_digits != 0) return false;
+            return RoundWeedCounted(buffer, length, fractionals, one.F, w_error,
+                                    ref kappa);
+        }
+
+        // Rounds the buffer upwards if the result is closer to v by possibly adding
+        // 1 to the buffer. If the precision of the calculation is not sufficient to
+        // round correctly, return false.
+        // The rounding might shift the whole buffer in which case the kappa is
+        // adjusted. For example "99", kappa = 3 might become "10", kappa = 4.
+        //
+        // If 2*rest > ten_kappa then the buffer needs to be round up.
+        // rest can have an error of +/- 1 unit. This function accounts for the
+        // imprecision and returns false, if the rounding direction cannot be
+        // unambiguously determined.
+        //
+        // Precondition: rest < ten_kappa.
+        static bool RoundWeedCounted(char[] buffer,
+                                     int length,
+                                     ulong rest,
+                                     ulong ten_kappa,
+                                     ulong unit,
+                                     ref int kappa)
+        {
+            Debug.Assert(rest < ten_kappa);
+            // The following tests are done in a specific order to avoid overflows. They
+            // will work correctly with any uint64 values of rest < ten_kappa and unit.
+            //
+            // If the unit is too big, then we don't know which way to round. For example
+            // a unit of 50 means that the real number lies within rest +/- 50. If
+            // 10^kappa == 40 then there is no way to tell which way to round.
+            if (unit >= ten_kappa) return false;
+            // Even if unit is just half the size of 10^kappa we are already completely
+            // lost. (And after the previous test we know that the expression will not
+            // over/underflow.)
+            if (ten_kappa - unit <= unit) return false;
+            // If 2 * (rest + unit) <= 10^kappa we can safely round down.
+            if ((ten_kappa - rest > rest) && (ten_kappa - 2 * rest >= 2 * unit))
+            {
+                return true;
+            }
+            // If 2 * (rest - unit) >= 10^kappa, then we can safely round up.
+            if ((rest > unit) && (ten_kappa - (rest - unit) <= (rest - unit)))
+            {
+                // Increment the last digit recursively until we find a non '9' digit.
+                buffer[length - 1]++;
+                for (int i = length - 1; i > 0; --i)
+                {
+                    if (buffer[i] != '0' + 10) break;
+                    buffer[i] = '0';
+                    buffer[i - 1]++;
+                }
+                // If the first digit is now '0'+ 10 we had a buffer with all '9's. With the
+                // exception of the first digit all digits are now '0'. Simply switch the
+                // first digit to '1' and adjust the kappa. Example: "99" becomes "10" and
+                // the power (the kappa) is increased.
+                if (buffer[0] == '0' + 10)
+                {
+                    buffer[0] = '1';
+                    kappa += 1;
+                }
+                return true;
+            }
+            return false;
         }
 
         // Returns the biggest power of ten that is less than or equal to the given
