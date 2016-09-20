@@ -16,9 +16,6 @@ namespace Tests
         [InlineData(0.0, new[] { '0' })]
         [InlineData(1e21, new[] { '1' })]
         [InlineData(1e20, new[] { '1' })]
-        [InlineData(111111111111111111111.0, new[] { '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1' })]
-        [InlineData(1111111111111111111111.0, new[] {'1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1','1'})]
-        [InlineData(11111111111111111111111.0, new[] { '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1' })]
         [InlineData(-0.001, new[] { '1' })]
         [InlineData(-0.0001, new[] { '1' })]
         [InlineData(-0.00001, new[] { '1' })]
@@ -38,11 +35,14 @@ namespace Tests
         [InlineData(0.0000001, new[] { '1' })]
         [InlineData(100000000000000000000.0, new[] { '1' })]
         [InlineData(3.5844466002796428e+298, new[] { '3','5','8','4','4','4','6','6','0','0','2','7','9','6','4','2','8' })]
+        [InlineData(111111111111111111111.0, new[] { '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'})]
+        [InlineData(1111111111111111111111.0, new[] {'1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'})]
+        [InlineData(11111111111111111111111.0, new[] { '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '1'})]
         public void Grisu_WithShortest_DoubleToAscii_ReturnsExpectedBuffer(double value, char[] expected)
         {
             int length, point;
             bool sign;
-            char[] buffer = new char[Grisu.kBase10MaximalLength];
+            char[] buffer = new char[Grisu.kBase10MaximalLength + 1];
 
             Grisu.DoubleToAscii(value, DtoaMode.SHORTEST, -1, ref buffer, out sign, out length, out point);
 
@@ -60,9 +60,6 @@ namespace Tests
         [InlineData(0.0, false)]
         [InlineData(1e21, false)]
         [InlineData(1e20, false)]
-        [InlineData(111111111111111111111.0, false)]
-        [InlineData(1111111111111111111111.0, false)]
-        [InlineData(11111111111111111111111.0, false)]
         [InlineData(-0.001, true)]
         [InlineData(-0.0001, true)]
         [InlineData(-0.00001, true)]
@@ -82,11 +79,14 @@ namespace Tests
         [InlineData(0.0000001, false)]
         [InlineData(100000000000000000000.0, false)]
         [InlineData(3.5844466002796428e+298, false)]
+        [InlineData(111111111111111111111.0, false)]
+        [InlineData(1111111111111111111111.0, false)]
+        [InlineData(11111111111111111111111.0, false)]
         public void Grisu_WithShortest_DoubleToAscii_ReturnsExpectedSign(double value, bool expected)
         {
             int length, point;
             bool actual;
-            char[] buffer = new char[Grisu.kBase10MaximalLength];
+            char[] buffer = new char[Grisu.kBase10MaximalLength + 1];
 
             Grisu.DoubleToAscii(value, DtoaMode.SHORTEST, -1, ref buffer, out actual, out length, out point);
 
@@ -102,9 +102,6 @@ namespace Tests
         [InlineData(0.0, 1)]
         [InlineData(1e21, 1)]
         [InlineData(1e20, 1)]
-        [InlineData(111111111111111111111.0, 21)]
-        [InlineData(1111111111111111111111.0, 22)]
-        [InlineData(11111111111111111111111.0, 23)]
         [InlineData(-0.001, 1)]
         [InlineData(-0.0001, 1)]
         [InlineData(-0.00001, 1)]
@@ -124,11 +121,14 @@ namespace Tests
         [InlineData(0.0000001, 1)]
         [InlineData(100000000000000000000.0, 1)]
         [InlineData(3.5844466002796428e+298, 17)]
+        [InlineData(111111111111111111111.0, 17)]
+        [InlineData(1111111111111111111111.0, 17)]
+        [InlineData(11111111111111111111111.0, 17)]
         public void Grisu_WithShortest_DoubleToAscii_ReturnsExpectedLength(double value, int expected)
         {
             int actual, point;
             bool sign;
-            char[] buffer = new char[Grisu.kBase10MaximalLength];
+            char[] buffer = new char[Grisu.kBase10MaximalLength + 1];
 
             Grisu.DoubleToAscii(value, DtoaMode.SHORTEST, -1, ref buffer, out sign, out actual, out point);
 
@@ -144,9 +144,6 @@ namespace Tests
         [InlineData(0.0, 1)]
         [InlineData(1e21, 22)]
         [InlineData(1e20, 21)]
-        [InlineData(111111111111111111111.0, 21)]
-        [InlineData(1111111111111111111111.0, 22)]
-        [InlineData(11111111111111111111111.0, 23)]
         [InlineData(-0.001, -2)]
         [InlineData(-0.0001, -3)]
         [InlineData(-0.00001, -4)]
@@ -166,11 +163,14 @@ namespace Tests
         [InlineData(0.0000001, -6)]
         [InlineData(100000000000000000000.0, 21)]
         [InlineData(3.5844466002796428e+298, 299)]
+        [InlineData(111111111111111111111.0, 21)]
+        [InlineData(1111111111111111111111.0, 22)]
+        [InlineData(11111111111111111111111.0, 23)]
         public void Grisu_WithShortest_DoubleToAscii_ReturnsExpectedDecimalPoint(double value, int expected)
         {
             int length, actual;
             bool sign;
-            char[] buffer = new char[Grisu.kBase10MaximalLength];
+            char[] buffer = new char[Grisu.kBase10MaximalLength + 1];
 
             Grisu.DoubleToAscii(value, DtoaMode.SHORTEST, -1, ref buffer, out sign, out length, out actual);
 
