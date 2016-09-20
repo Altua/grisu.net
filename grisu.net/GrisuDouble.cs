@@ -109,7 +109,76 @@ namespace GrisuDotNet
             return d64_;
         }
 
-        public int Exponent
+        // Returns an estimation of k such that 10^(k-1) <= v < 10^k where
+        // v = f * 2^exponent and 2^52 <= f < 2^53.
+        // v is hence a normalized double with the given exponent. The output is an
+        // approximation for the exponent of the decimal approimation .digits * 10^k.
+        //
+        // The result might undershoot by 1 in which case 10^k <= v < 10^k+1.
+        // Note: this property holds for v's upper boundary m+ too.
+        //    10^k <= m+ < 10^k+1.
+        //   (see explanation below).
+        //
+        // Examples:
+        //  EstimatePower(0)   => 16
+        //  EstimatePower(-52) => 0
+        //
+        // Note: e >= 0 => EstimatedPower(e) > 0. No similar claim can be made for e<0.
+        internal static int EstimatePower(int exponent)
+        {
+            // This function estimates log10 of v where v = f*2^e (with e == exponent).
+            // Note that 10^floor(log10(v)) <= v, but v <= 10^ceil(log10(v)).
+            // Note that f is bounded by its container size. Let p = 53 (the double's
+            // significand size). Then 2^(p-1) <= f < 2^p.
+            //
+            // Given that log10(v) == log2(v)/log2(10) and e+(len(f)-1) is quite close
+            // to log2(v) the function is simplified to (e+(len(f)-1)/log2(10)).
+            // The computed number undershoots by less than 0.631 (when we compute log3
+            // and not log10).
+            //
+            // Optimization: since we only need an approximated result this computation
+            // can be performed on 64 bit integers. On x86/x64 architecture the speedup is
+            // not really measurable, though.
+            //
+            // Since we want to avoid overshooting we decrement by 1e10 so that
+            // floating-point imprecisions don't affect us.
+            //
+            // Explanation for v's boundary m+: the computation takes advantage of
+            // the fact that 2^(p-1) <= f < 2^p. Boundaries still satisfy this requirement
+            // (even for denormals where the delta can be much more important).
+
+            // For doubles len(f) == 53 (don't forget the hidden bit).
+            double estimate = Math.Ceiling((exponent + kSignificandSize - 1) * k1Log10 - 1e-10);
+            return (int)estimate;
+        }
+
+        const double k1Log10 = 0.30102999566398114;  // 1/lg(10)
+
+        public static int NormalizedExponent(ulong significand, int exponent)
+        {
+            Debug.Assert(significand != 0);
+            while ((significand & kHiddenBit) == 0)
+            {
+                significand = significand << 1;
+                exponent = exponent - 1;
+            }
+            return exponent;
+        }
+
+        public bool LowerBoundaryIsCloser() {
+            // The boundary is closer if the significand is of the form f == 2^p-1 then
+            // the lower boundary is closer.
+            // Think of v = 1000e10 and v- = 9999e9.
+            // Then the boundary (== (v - v-)/2) is not just at a distance of 1e9 but
+            // at a distance of 1e8.
+            // The only exception is for the smallest normal: the largest denormal is
+            // at the same distance as its successor.
+            // Note: denormals have the same exponent as the smallest normals.
+            bool physical_significand_is_zero = ((AsUInt64() & kSignificandMask) == 0);
+            return physical_significand_is_zero && (Exponent != kDenormalExponent);
+          }
+
+    public int Exponent
         {
             get
             {

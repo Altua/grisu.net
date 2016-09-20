@@ -40,6 +40,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Bignum.cs" />
     <Compile Include="DiyFp.cs" />
     <Compile Include="Grisu.cs" />
     <Compile Include="GrisuDouble.cs" />
