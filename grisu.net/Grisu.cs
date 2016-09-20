@@ -1241,7 +1241,7 @@ namespace GrisuDotNet
         // kBase10MaximalLength.
         // Note that DoubleToAscii null-terminates its input. So the given buffer
         // should be at least kBase10MaximalLength + 1 characters long.
-        internal const int kBase10MaximalLength = 17;
+        public const int kBase10MaximalLength = 17;
 
         private const string infinity_symbol_ = "Infinity";
         private const string nan_symbol_ = "NaN";

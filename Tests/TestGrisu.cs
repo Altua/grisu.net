@@ -30,7 +30,9 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Security.Cryptography;
 using System.Threading;
+using System.Xml.Schema;
 using GrisuDotNet;
 using NUnit.Framework;
 
@@ -90,6 +92,7 @@ namespace Tests
         [Test]
         public void TestDoubleToString()
         {
+            CheckDoubleToStringEquals("0.000123456789123456", 0.000123456789123456);
             CheckDoubleToStringEquals("0", 0.0);
             CheckDoubleToStringEquals("12345", 12345.0);
             CheckDoubleToStringEquals("1.2345e27", 12345e23);
