@@ -64,7 +64,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AssertSequence.cs" />
+    <Compile Include="GayShortest.cs" />
+    <Compile Include="GayShortestData.cs" />
     <Compile Include="GrisuUnitTests.cs" />
+    <Compile Include="PrecomputedShortest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TestGrisu.cs" />
   </ItemGroup>
