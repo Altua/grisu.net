@@ -33,17 +33,16 @@ namespace GrisuDotNet
 {
     internal struct GrisuDouble
     {
-        const ulong kSignMask = 0x8000000000000000;
-        const ulong kExponentMask = 0x7FF0000000000000;
-        const ulong kSignificandMask = 0x000FFFFFFFFFFFFF;
-        const ulong kHiddenBit = 0x0010000000000000;
-        const int kPhysicalSignificandSize = 52;  // Excludes the hidden bit.
-        const int kSignificandSize = 53;
-
-        const int kExponentBias = 0x3FF + kPhysicalSignificandSize;
-        const int kDenormalExponent = -kExponentBias + 1;
-        const int kMaxExponent = 0x7FF - kExponentBias;
-        const ulong kInfinity = 0x7FF0000000000000;
+        private const ulong kSignMask = 0x8000000000000000;
+        private const ulong kExponentMask = 0x7FF0000000000000;
+        private const ulong kSignificandMask = 0x000FFFFFFFFFFFFF;
+        private const ulong kHiddenBit = 0x0010000000000000;
+        private const int kPhysicalSignificandSize = 52;  // Excludes the hidden bit.
+        private const int kSignificandSize = 53;
+        private const int kExponentBias = 0x3FF + kPhysicalSignificandSize;
+        private const int kDenormalExponent = -kExponentBias + 1;
+        private const int kMaxExponent = 0x7FF - kExponentBias;
+        private const ulong kInfinity = 0x7FF0000000000000;
 
         public GrisuDouble(double d)
         {
@@ -152,7 +151,7 @@ namespace GrisuDotNet
             return (int)estimate;
         }
 
-        const double k1Log10 = 0.30102999566398114;  // 1/lg(10)
+        private const double k1Log10 = 0.30102999566398114;  // 1/lg(10)
 
         public static int NormalizedExponent(ulong significand, int exponent)
         {
@@ -208,49 +207,19 @@ namespace GrisuDotNet
         }
 
         // Returns true if the double is a denormal.
-        public bool IsDenormal
-        {
-            get
-            {
-                return (d64_ & kExponentMask) == 0;
-            }
-        }
+        public bool IsDenormal => (d64_ & kExponentMask) == 0;
 
         // We consider denormals not to be special.
         // Hence only Infinity and NaN are special.
-        public bool IsSpecial
-        {
-            get
-            {
-                return (d64_ & kExponentMask) == kExponentMask;
-            }
-        }
+        public bool IsSpecial => (d64_ & kExponentMask) == kExponentMask;
 
-        public bool IsNaN
-        {
-            get
-            {
-                return ((d64_ & kExponentMask) == kExponentMask) &&
-                        ((d64_ & kSignificandMask) != 0);
-            }
-        }
+        public bool IsNaN => ((d64_ & kExponentMask) == kExponentMask) &&
+                             ((d64_ & kSignificandMask) != 0);
 
-        public bool IsInfinite
-        {
-            get
-            {
-                return ((d64_ & kExponentMask) == kExponentMask) &&
-                    ((d64_ & kSignificandMask) == 0);
-            }
-        }
+        public bool IsInfinite => ((d64_ & kExponentMask) == kExponentMask) &&
+                                  ((d64_ & kSignificandMask) == 0);
 
-        public int Sign
-        {
-            get
-            {
-                return (d64_ & kSignMask) == 0 ? 1 : -1;
-            }
-        }
+        public int Sign => (d64_ & kSignMask) == 0 ? 1 : -1;
 
         // Precondition: the value encoded by this Double must be greater or equal
         // than +0.0.
@@ -324,10 +293,7 @@ namespace GrisuDotNet
             out_m_plus = new DiyFp(plusF, plusE);
         }
 
-        public double Value
-        {
-            get { return value_; }
-        }
+        public double Value => value_;
 
         // Returns the significand size for a given order of magnitude.
         // If v = f*2^e with 2^p-1 <= f <= 2^p then p+e is v's order of magnitude.
@@ -345,21 +311,9 @@ namespace GrisuDotNet
             return order - kDenormalExponent;
         }
 
-        public static double Infinity
-        {
-            get
-            {
-                return double.PositiveInfinity;
-            }
-        }
+        public static double Infinity => double.PositiveInfinity;
 
-        public static double NaN
-        {
-            get
-            {
-                return double.NaN;
-            }
-        }
+        public static double NaN => double.NaN;
 
         private static ulong DiyFpToUInt64(DiyFp diy_fp)
         {
@@ -396,7 +350,7 @@ namespace GrisuDotNet
                 (biased_exponent << kPhysicalSignificandSize);
         }
 
-        private ulong d64_;
-        private double value_;
+        private readonly ulong d64_;
+        private readonly double value_;
     }
 }

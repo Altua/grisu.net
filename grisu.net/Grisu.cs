@@ -134,8 +134,6 @@ namespace GrisuDotNet
         /// requested_digits parameter and the padding-zeroes limit the size of the
         /// output. Don't forget the decimal point, the exponent character and the
         /// terminating null-character when computing the maximal output size.
-        /// The given length is only used in debug mode to ensure the buffer is big
-        /// enough.
         /// </summary>
         public static void DoubleToAscii(
             double value,
@@ -205,8 +203,6 @@ namespace GrisuDotNet
                 return;
 
             // If the fast dtoa didn't succeed use the slower bignum version.
-            // TODO GrisuDouble is not immutable, so we need to make a copy here. Make immutable?
-            gv = new GrisuDouble(value);
             BignumDtoa(gv, mode, requested_digits, buffer, out length, out point);
             buffer[length] = '\0';
         }
