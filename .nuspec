@@ -7,6 +7,6 @@
         <authors>Altua</authors>
     </metadata>
     <files>
-        <file src="grisu.net\bin\Release\grisu.net.dll" target="lib/net45" />
+        <file src="grisu.net\bin\Release\net462\grisu.net.dll" target="lib/net462" />
     </files>
 </package>
