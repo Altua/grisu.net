@@ -32,56 +32,50 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Altua.UnitTesting;
 using GrisuDotNet;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Tests
 {
     public sealed class GayShortest
     {
-        /// <summary>
-        /// The number of included tests. A value in the range [1, 100.000]
-        /// </summary>
-        public static int IncludedTests = 4000;
-
-
-        public static IEnumerable<object> GayShortestTestData
-        {
-            get { return GayShortestData.KShortestTestNumbers.Take(IncludedTests).Select(i => new object[] {i}); }
-        }
-
-
-        [Theory]
-        [MemberData(nameof(GayShortestTestData))]
-        internal void Grisu_Shortest_DoubleToAscii_HasCorrectRepresentation(PrecomputedShortest input)
+        [Fact]
+        internal void Grisu_Shortest_DoubleToAscii_HasCorrectDecimalPoint()
         {
             int length, point;
             bool sign;
             char[] buffer = new char[Grisu.kBase10MaximalLength + 1];
 
-            Grisu.DoubleToAscii(input.Value, DtoaMode.SHORTEST, -1, ref buffer, out sign, out length, out point);
 
-            char[] expected = input.Representation.ToCharArray();
-            char[] actual = new char[length];
-            Array.Copy(buffer, 0, actual, 0, length);
-            AssertSequence.Equal(expected, actual);
+            foreach (var input in GayShortestData.KShortestTestNumbers().Take(1))
+            {
+                Grisu.DoubleToAscii(input.Value, DtoaMode.SHORTEST, -1, ref buffer, out sign, out length, out point);
+
+                Assert.Equal(input.DecimalPoint, point);
+            }
         }
 
 
-        [Theory]
-        [MemberData(nameof(GayShortestTestData))]
-        internal void Grisu_Shortest_DoubleToAscii_HasCorrectDecimalPoint(PrecomputedShortest input)
+        [Fact]
+        internal void Grisu_Shortest_DoubleToAscii_HasCorrectRepresentation()
         {
             int length, point;
             bool sign;
             char[] buffer = new char[Grisu.kBase10MaximalLength + 1];
 
-            Grisu.DoubleToAscii(input.Value, DtoaMode.SHORTEST, -1, ref buffer, out sign, out length, out point);
+            foreach (var input in GayShortestData.KShortestTestNumbers())
+            {
+                Grisu.DoubleToAscii(input.Value, DtoaMode.SHORTEST, -1, ref buffer, out sign, out length, out point);
 
-            int expected = input.DecimalPoint;
-            int actual = point;
-            Assert.Equal(expected, actual);
+                char[] expected = input.Representation.ToCharArray();
+                char[] actual = new char[length];
+                Array.Copy(buffer, 0, actual, 0, length);
+                AssertSequence.Equal(expected, actual);
+            }
         }
+
     }
 }

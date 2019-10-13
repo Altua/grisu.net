@@ -34,64 +34,25 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Xml.Schema;
 using GrisuDotNet;
-using NUnit.Framework;
+using Xunit;
 
 namespace Tests
 {
-    [TestFixture]
     public class TestGrisu
     {
-        public static void Main(string[] args)
-        {
-            new TestGrisu().TestPerformance();
-        }
 
-        [Test]
-        [Explicit]
-        public void TestPerformance()
+        private void CheckDoubleToStringEquals(string expected, double value)
         {
-            Random r = new Random(1);
-            double[] values = new double[1000000];
-            for (int i = 0; i < values.Length; ++i)
-            {
-                values[i] = (r.NextDouble() - 0.5) * Math.Pow(10, r.NextDouble() * 308);
-            }
-
             StringWriter writer = new StringWriter();
-
-            Stopwatch sw = new Stopwatch();
-            sw.Start();
-            for (int i = 0; i < values.Length; ++i)
-            {
-                //builder.AppendFormat("{0:R}", values[i]);
-                writer.Write(values[i].ToString("R"));
-                //builder.Append(values[i]);
-            }
-            sw.Stop();
-            Console.WriteLine("builtin length: " + writer.ToString().Length);
-            Console.WriteLine("builtin time: " + sw.ElapsedMilliseconds);
-            if (values.Length < 100)
-                Console.WriteLine(writer.ToString());
-
-            writer = new StringWriter();
-
-            sw = new Stopwatch();
-            sw.Start();
-            for (int i = 0; i < values.Length; ++i)
-            {
-                Grisu.DoubleToString(values[i], writer);
-            }
-            sw.Stop();
-            Console.WriteLine("grisu length: " + writer.ToString().Length);
-            Console.WriteLine("grisu time: " + sw.ElapsedMilliseconds);
-
-            if (values.Length < 100)
-                Console.WriteLine(writer.ToString());
+            Grisu.DoubleToString(value, writer);
+            Assert.Equal(expected, writer.ToString());
         }
 
-        [Test]
+        [Fact]
         public void TestDoubleToString()
         {
+            Thread.CurrentThread.CurrentCulture = new CultureInfo("en-US", false);
+
             CheckDoubleToStringEquals("0.000123456789123456", 0.000123456789123456);
             CheckDoubleToStringEquals("0", 0.0);
             CheckDoubleToStringEquals("12345", 12345.0);
@@ -124,31 +85,5 @@ namespace Tests
             CheckDoubleToStringEquals("3.5844466002796428E+298", 3.5844466002796428e+298);
         }
 
-        private void CheckDoubleToStringEquals(string expected, double value)
-        {
-            StringWriter writer = new StringWriter();
-            Grisu.DoubleToString(value, writer);
-            Assert.AreEqual(expected, writer.ToString());
-        }
-
-        [TestFixture]
-        public class TestNonEnglishCulture : TestGrisu
-        {
-            private CultureInfo m_originalCulture;
-
-            [TestFixtureSetUp]
-            public void TestFixtureSetUp()
-            {
-                m_originalCulture = Thread.CurrentThread.CurrentCulture;
-
-                Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE");
-            }
-
-            [TestFixtureTearDown]
-            public void TearDown()
-            {
-                Thread.CurrentThread.CurrentCulture = m_originalCulture;
-            }
-        }
     }
 }
