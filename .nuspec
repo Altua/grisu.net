@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+    <metadata>
+        <id>Altua.GrisuDotNet</id>
+        <version>$version$</version>
+        <description>Grisu is a fast, new algorithm for converting a floating-point number to a decimal string</description>
+        <authors>Altua</authors>
+    </metadata>
+    <files>
+        <file src="grisu.net\bin\Release\grisu.net.dll" target="lib/net45" />
+    </files>
+</package>

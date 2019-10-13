@@ -1,0 +1,61 @@
+trigger:
+- master
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  solution: '**/*.sln'
+  buildPlatform: 'Any CPU'
+  buildConfiguration: 'Release'
+  disable.coverage.autogenerate: 'true'
+
+steps:
+- task: NuGetToolInstaller@1
+
+- task: NuGetCommand@2
+  inputs:
+    restoreSolution: '$(solution)'
+
+- task: VSBuild@1
+  inputs:
+    solution: '$(solution)'
+    platform: '$(buildPlatform)'
+    configuration: '$(buildConfiguration)'
+
+- task: DotNetCoreCLI@2
+  displayName: Test
+  inputs:
+    command: 'test'
+    projects: '**/*Tests.csproj'
+    publishTestResults: true
+    arguments: '--configuration $(buildConfiguration) --no-build /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=$(Build.SourcesDirectory)\TestResults\ /p:Threshold=55'
+
+- task: reportgenerator@4
+  displayName: Report
+  inputs:
+    reports: '$(Build.SourcesDirectory)\TestResults\coverage.cobertura.xml'
+    targetdir: '$(Build.SourcesDirectory)\CodeCoverageReport'
+    reporttypes: 'HtmlInline_AzurePipelines;Cobertura'
+
+- task: PublishCodeCoverageResults@1
+  displayName: Publish Report
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '$(Build.SourcesDirectory)\CodeCoverageReport\Cobertura.xml'
+    reportDirectory: '$(Build.SourcesDirectory)\CodeCoverageReport'
+    failIfCoverageEmpty: true
+
+- task: CopyFiles@2
+  displayName: 'Copy Files to: $(Build.ArtifactStagingDirectory)'
+  inputs:
+    Contents: |
+     **\*.nuspec
+     src\**\bin\$(buildConfiguration)\**\*.dll
+    TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: 'Altua.GrisuDotNet'
+    publishLocation: 'Container'

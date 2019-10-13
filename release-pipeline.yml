@@ -1,0 +1,40 @@
+trigger: none
+
+pool:
+  vmIamge: 'windows-latest'
+  
+variables:
+  Major: 1
+  Minor: 0
+  Revision: $[counter(format('{0}-{1}', variables['Major'], variables['Minor']), 0)]
+  PackageVersion: $[format('{0}.{1}.{2}', variables['Major'], variables['Minor'], variables['Revision'])]
+
+steps:
+- task: DownloadBuildArtifacts@0
+  inputs:
+    buildType: 'specific'
+    project: 'Cloud'
+    pipeline: 'GrisuDotNet-CI'
+    specificBuildWithTriggering: false
+    buildVersionToDownload: 'latest'
+    allowPartiallySucceededBuilds: false 
+    branchName: 'refs/heads/master'
+    downloadType: 'single'
+    artifactName: 'Altua.GrisuDotNet'
+    downloadPath: '$(Build.ArtifactStagingDirectory)'
+
+- task: NuGetCommand@2
+  inputs:
+    command: pack
+    packagesToPack: '.nuspec'
+    versioningScheme: 'byEnvVar'
+    versionEnvVar: 'PackageVersion'
+    basePath: '$(Build.ArtifactStagingDirectory)/Altua.GrisuDotNet'
+    packDestination: '$(Build.ArtifactStagingDirectory)/package'
+    
+- task: NuGetCommand@2
+  inputs:
+    command: 'push'
+    packagesToPush: '$(Build.ArtifactStagingDirectory)/package/**/*.nupkg;!$(Build.ArtifactStagingDirectory)/package/**/*.symbols.nupkg'
+    nuGetFeedType: 'internal'
+    publishVstsFeed: 'a0b0aaaa-c5cc-43c6-af3e-60bcbbc1f245'
