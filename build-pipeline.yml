@@ -55,10 +55,10 @@ steps:
     TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
 - task: DownloadSecureFile@1    
-    name: certificate
-    displayName: 'Download code certificate'    
-    inputs:
-      secureFile: 'altua.code.2020.pfx'
+  name: certificate
+  displayName: 'Download code certificate'    
+  inputs:
+    secureFile: 'altua.code.2020.pfx'
 
 - task: PowerShell@2
   displayName: Sign assemblies    
