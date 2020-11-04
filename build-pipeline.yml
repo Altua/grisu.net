@@ -60,17 +60,17 @@ steps:
     inputs:
       secureFile: 'altua.code.2020.pfx'
 
-  - task: PowerShell@2
-    displayName: Sign assemblies    
-    inputs:
-      targetType: 'inline'
-      script: |
-        $env:Path += ";${env:ProgramFiles(x86)}\Microsoft SDKs\ClickOnce\SignTool" 
-        $assemblies = gci '$(Build.ArtifactStagingDirectory)/**/grisu.net.dll' -Recurse
-        foreach($assembly in $assemblies) {
-            signtool sign /fd SHA1 /td SHA1 /f $(certificate.secureFilePath) /p $(certPass) /q /tr http://timestamp.digicert.com $assembly
-            signtool sign /fd SHA256 /td SHA256 /f $(certificate.secureFilePath) /p $(certPass) /q /as /tr http://timestamp.digicert.com $assembly
-        }
+- task: PowerShell@2
+  displayName: Sign assemblies    
+  inputs:
+    targetType: 'inline'
+    script: |
+      $env:Path += ";${env:ProgramFiles(x86)}\Microsoft SDKs\ClickOnce\SignTool" 
+      $assemblies = gci '$(Build.ArtifactStagingDirectory)/**/grisu.net.dll' -Recurse
+      foreach($assembly in $assemblies) {
+          signtool sign /fd SHA1 /td SHA1 /f $(certificate.secureFilePath) /p $(certPass) /q /tr http://timestamp.digicert.com $assembly
+          signtool sign /fd SHA256 /td SHA256 /f $(certificate.secureFilePath) /p $(certPass) /q /as /tr http://timestamp.digicert.com $assembly
+      }
 
 - task: PublishBuildArtifacts@1
   inputs:
