@@ -63,7 +63,7 @@ steps:
   name: certificate
   displayName: 'Download code certificate'    
   inputs:
-    secureFile: 'altua.code.2020.pfx'
+    secureFile: 'grunt.code.pfx'
 
 - task: PowerShell@2
   displayName: Sign assemblies    
